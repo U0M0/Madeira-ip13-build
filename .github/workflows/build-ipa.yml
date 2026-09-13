@@ -1,0 +1,35 @@
+name: Build Madeira iPhone 13
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Madeira
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Show environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcodebuild -showsdks
+          echo "=== Repository ==="
+          ls -la
+          echo "=== App ==="
+          ls -la app
+          echo "=== FEX ==="
+          ls -la FEX | head
+          echo "=== Wine ==="
+          ls -la wine | head
+
+      - name: Check Xcode project
+        run: |
+          xcodebuild \
+            -project app/Madeira.xcodeproj \
+            -target Madeira \
+            -showBuildSettings

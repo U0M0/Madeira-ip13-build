@@ -17,11 +17,14 @@ jobs:
         run: |
           sw_vers
           xcodebuild -version
-          echo "FEX:"
+
+          echo "=== FEX ==="
           git -C FEX rev-parse --short HEAD || true
-          echo "Wine:"
+
+          echo "=== Wine ==="
           git -C wine rev-parse --short HEAD || true
-          echo "DXMT:"
+
+          echo "=== DXMT ==="
           git -C research/dxmt rev-parse --short HEAD || true
 
       - name: Check required libraries
@@ -48,7 +51,7 @@ jobs:
             fi
           done
 
-                - name: Fetch Microsoft VC Runtime
+      - name: Fetch Microsoft VC Runtime
         run: |
           brew install sevenzip
 
@@ -57,18 +60,27 @@ jobs:
             -o /tmp/VC_redist.x64.exe
 
           rm -rf /tmp/vcredist
+          rm -rf /tmp/vcruntime-dlls
+
           mkdir -p /tmp/vcredist
+          mkdir -p /tmp/vcruntime-dlls
           mkdir -p app/Madeira/x86_64-vcruntime
 
-          7zz x /tmp/VC_redist.x64.exe -o/tmp/vcredist -y
+          7zz x /tmp/VC_redist.x64.exe \
+            -o/tmp/vcredist \
+            -y
 
-          echo "=== CAB files ==="
-          find /tmp/vcredist -type f | head -100
+          echo "=== Extracting CAB files ==="
 
-          for cab in /tmp/vcredist/.rsrc/1033/CABINET/*.cab; do
-            [ -f "$cab" ] || continue
-            7zz x "$cab" -o/tmp/vcruntime-dlls -y
+          find /tmp/vcredist -type f -iname "*.cab" | while read cab
+          do
+            echo "Extracting: $cab"
+            7zz x "$cab" \
+              -o/tmp/vcruntime-dlls \
+              -y || true
           done
+
+          echo "=== Searching runtime DLLs ==="
 
           for dll in \
             concrt140.dll \
@@ -91,11 +103,12 @@ jobs:
               exit 1
             fi
 
+            echo "FOUND: $dll"
             cp "$found" "app/Madeira/x86_64-vcruntime/$dll"
           done
 
           echo "=== VC Runtime ready ==="
-          ls -lh app/Madeira/x86_64-vcruntime/
+          ls -lh app/Madeira/x86_64-vcruntime
 
       - name: Build unsigned Madeira
         run: |
@@ -127,9 +140,14 @@ jobs:
 
           rm -rf Payload
           mkdir Payload
-          cp -R build/Release-iphoneos/Madeira.app Payload/
 
-          zip -qry Madeira-iPhone13-unsigned.ipa Payload
+          cp -R \
+            build/Release-iphoneos/Madeira.app \
+            Payload/
+
+          zip -qry \
+            Madeira-iPhone13-unsigned.ipa \
+            Payload
 
           echo "=== IPA ==="
           ls -lh Madeira-iPhone13-unsigned.ipa

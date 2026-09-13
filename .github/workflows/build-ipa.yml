@@ -51,7 +51,7 @@ jobs:
             fi
           done
 
-      - name: Fetch Microsoft VC Runtime
+            - name: Fetch Microsoft VC Runtime
         run: |
           brew install sevenzip
 
@@ -60,27 +60,47 @@ jobs:
             -o /tmp/VC_redist.x64.exe
 
           rm -rf /tmp/vcredist
-          rm -rf /tmp/vcruntime-dlls
+          rm -rf app/Madeira/x86_64-vcruntime
 
           mkdir -p /tmp/vcredist
-          mkdir -p /tmp/vcruntime-dlls
           mkdir -p app/Madeira/x86_64-vcruntime
 
-          7zz x /tmp/VC_redist.x64.exe \
+          echo "=== Extract PE resources ==="
+
+          7zz x \
+            -tPE \
+            /tmp/VC_redist.x64.exe \
             -o/tmp/vcredist \
             -y
 
-          echo "=== Extracting CAB files ==="
+          echo "=== CAB files found ==="
 
-          find /tmp/vcredist -type f -iname "*.cab" | while read cab
+          find /tmp/vcredist -type f -print
+
+          echo "=== Extract CABs ==="
+
+          found_cab=0
+
+          while IFS= read -r cab
           do
+            found_cab=1
             echo "Extracting: $cab"
-            7zz x "$cab" \
-              -o/tmp/vcruntime-dlls \
-              -y || true
-          done
 
-          echo "=== Searching runtime DLLs ==="
+            7zz x \
+              "$cab" \
+              -oapp/Madeira/x86_64-vcruntime \
+              -y
+          done < <(find /tmp/vcredist -type f \( -iname "*.cab" -o -path "*/CABINET/*" \))
+
+          if [ "$found_cab" -eq 0 ]; then
+            echo "ERROR: No CAB files found"
+            exit 1
+          fi
+
+          echo "=== Runtime directory ==="
+          find app/Madeira/x86_64-vcruntime -maxdepth 2 -type f -print
+
+          echo "=== Verify required DLLs ==="
 
           for dll in \
             concrt140.dll \
@@ -96,15 +116,21 @@ jobs:
             vcruntime140_1.dll \
             vcruntime140_threads.dll
           do
-            found="$(find /tmp/vcruntime-dlls -type f -iname "$dll" | head -1)"
+            found="$(find app/Madeira/x86_64-vcruntime \
+              -type f \
+              -iname "$dll" \
+              | head -1)"
 
             if [ -z "$found" ]; then
               echo "MISSING: $dll"
               exit 1
             fi
 
-            echo "FOUND: $dll"
-            cp "$found" "app/Madeira/x86_64-vcruntime/$dll"
+            if [ "$found" != "app/Madeira/x86_64-vcruntime/$dll" ]; then
+              cp "$found" "app/Madeira/x86_64-vcruntime/$dll"
+            fi
+
+            echo "OK: $dll"
           done
 
           echo "=== VC Runtime ready ==="

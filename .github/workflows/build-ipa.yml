@@ -162,6 +162,72 @@ jobs:
 
           ls -lh app/Madeira/x86_64-vcruntime
           
+      - name: Build FEX for iOS
+        run: |
+          set -euxo pipefail
+
+          brew install ninja cmake
+
+          rm -rf FEX/build-ios
+
+          echo "=== Configure FEX for iOS ==="
+
+          cmake \
+            -S FEX \
+            -B FEX/build-ios \
+            -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_THUNKS=OFF \
+            -DBUILD_FEXCONFIG=OFF \
+            -DENABLE_LTO=OFF \
+            -DENABLE_GDB_SYMBOLS=OFF \
+            -DENABLE_VIXL_DISASSEMBLER=OFF \
+            -DENABLE_ZYDIS=OFF \
+            -DENABLE_FEX_ALLOCATOR=OFF \
+            -DENABLE_JEMALLOC_GLIBC_ALLOC=OFF \
+            -DTUNE_CPU=none
+
+          echo "=== Build FEX ==="
+
+          cmake --build FEX/build-ios \
+            --target \
+              FEXCore \
+              FEXCore_Base \
+              JemallocLibs \
+            -j 3
+
+          echo "=== Verify generated FEX files ==="
+
+          required_files=(
+            "FEX/build-ios/include/FEXCore/Config/ConfigValues.inl"
+            "FEX/build-ios/include/FEXCore/Config/ConfigOptions.inl"
+            "FEX/build-ios/FEXCore/Source/libFEXCore.a"
+            "FEX/build-ios/FEXCore/Source/libFEXCore_Base.a"
+            "FEX/build-ios/FEXCore/Source/libJemallocLibs.a"
+            "FEX/build-ios/External/fmt/libfmt.a"
+            "FEX/build-ios/External/cephes/libcephes_128bit.a"
+            "FEX/build-ios/External/SoftFloat-3e/libsoftfloat_3e.a"
+            "FEX/build-ios/External/xxhash/cmake_unofficial/libxxhash.a"
+          )
+
+          for f in "${required_files[@]}"
+          do
+            if [ ! -f "$f" ]; then
+              echo "MISSING: $f"
+              exit 1
+            fi
+
+            echo "OK: $f"
+          done
+
+          echo "=== FEX iOS build complete ==="
+          
       - name: Build unsigned Madeira
         run: |
           set -o pipefail

@@ -1,5 +1,6 @@
 #import "JITAllocator.h"
 #import "FEXBridge.h"
+#import "MemoryGovernor.h"
 #import "WineServerBridge.h"
 #import "WineProcessBridge.h"
 #import "IOSDisplayShim.h"

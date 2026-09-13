@@ -3,6 +3,7 @@
 
 #include "FEXBridge.h"
 #include "JITAllocator.h"
+#include "MemoryGovernor.h"
 
 // Xcode defines DEBUG=1 in debug builds which conflicts with FEX's LogMan::DEBUG enum
 #ifdef DEBUG
@@ -187,6 +188,11 @@ static bool jit_pool_init(void) {
 // Custom mmap/munmap hooks for FEXCore
 // ---------------------------------------------------------------------------
 static void *fex_mmap_hook(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
+    // Do not gate non-executable mmap by `length`: Wine/FEX frequently reserve
+    // large, sparse virtual-address ranges that do not immediately become
+    // phys_footprint. Treating requested VA size as committed RAM causes false
+    // OOMs and can crash the guest while plenty of physical headroom remains.
+    // The governor still observes the real process footprint asynchronously.
     if ((prot & PROT_EXEC) && g_jit_rx_base) {
         // Executable allocation: sub-allocate from our JIT pool (returns RX pointer)
         return jit_pool_alloc(length);
@@ -358,6 +364,7 @@ extern "C" int64_t fex_get_jit_write_offset(void) {
 }
 
 bool fex_initialize(void) {
+    madeira_memory_governor_start();
     if (g_initialized.load()) {
         return true;
     }
@@ -513,6 +520,7 @@ void fex_shutdown(void) {
     LogMan::Throw::UnInstallHandler();
 
     fex_log("FEXCore shut down");
+    madeira_memory_governor_stop();
 }
 
 int64_t fex_test_execute(void) {

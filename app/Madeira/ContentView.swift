@@ -1837,8 +1837,10 @@ struct ContentView: View {
             // substrate — steam.exe died in seconds. Do not try a third time.
             // The remaining levers are USE-side: the 276MB of duplicate copies
             // (.text sharing) and the 214MB tail of EC code buffers.
-            // ml668: RUNTIME-SELECTABLE. 896 stays the default and the only
-            // value proven for Steam/CEF. 384 is the direct-game experiment:
+            // ml668 + iPhone 13 fork: runtime-selectable. Upstream used 896MB as
+            // the Steam/CEF-proven default; this device-specific fork uses 384MB
+            // by default to recover ~512MB of dirty-at-birth footprint. 384 was
+            // already the direct-game experiment:
             // the last good Book of the Dead run used ~139MB of head + ~48MB
             // of tail, so 384 leaves ~197MB of observed slack while returning
             // ~512MB of footprint -- and the pool is dirty from birth, so its
@@ -1847,9 +1849,9 @@ struct ContentView: View {
             // allocated), so changing this is now a one-line change.
             // Override lives in Documents/madeira-pool.txt (a bare number of MB)
             // so it can be swapped between runs without a rebuild, and deleting
-            // the file reverts to the proven default. Clamped to sane values --
+            // the file reverts to the iPhone 13 default. Clamped to sane values --
             // a typo here would otherwise move the VA floor with it.
-            var poolSizeMB = 896
+            var poolSizeMB = 384
             if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
                let txt = try? String(contentsOf: d.appendingPathComponent("madeira-pool.txt"), encoding: .utf8),
                let mb = Int(txt.trimmingCharacters(in: .whitespacesAndNewlines)),
@@ -1989,6 +1991,11 @@ struct ContentView: View {
                     logStore.log("Mono suspend policy: MONO_THREADS_SUSPEND=\(v) via madeira-mono-suspend.txt")
                 }
             }
+
+            // iPhone 13 memory profile: start the process-wide governor before
+            // allocating the debugger-backed JIT pool. fex_initialize() starts it
+            // again later, but the start function is idempotent.
+            madeira_memory_governor_start()
 
             winios_phase("pool-alloc-begin")
             logStore.log("Allocating \(poolSizeMB)MB JIT pool (BRK will suspend process)...")

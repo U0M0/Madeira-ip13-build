@@ -56,35 +56,26 @@ struct FPSOverlay: View {
     /// Ring buffer of (timestamp, count) pairs, 100ms cadence, 5s window.
     @State private var samples: [(t: CFAbsoluteTime, c: UInt64)] = []
     private let bufferCapacity = 50  // 5s @ 100ms
-    /// ml606: live phys_footprint in MB, refreshed on the 250ms display tick.
+    /// Live phys_footprint and iOS headroom, supplied by the process-wide
+    /// memory governor. No device-specific jetsam constant is assumed.
     @State private var memMB: Int = 0
+    @State private var availableMB: Int = 0
+    @State private var estimatedLimitMB: Int = 0
 
-    /// iOS jetsams this app at EXACTLY 4096MB of phys_footprint (memory:
-    /// "Jetsam = EXACTLY 4096MB"). task_info(TASK_VM_INFO) reports the very
-    /// same counter the kernel judges us on, so this is the real number and
-    /// not an approximation from resident size.
-    private static let jetsamLimitMB = 4096
-
-    private func readFootprintMB() -> Int {
-        var info = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
-        let kr = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
-            }
-        }
-        guard kr == KERN_SUCCESS else { return 0 }
-        return Int(info.phys_footprint / (1024 * 1024))
+    private func refreshMemoryTelemetry() {
+        let mib = UInt64(1024 * 1024)
+        memMB = Int(madeira_memory_governor_current_footprint() / mib)
+        availableMB = Int(madeira_memory_governor_current_available() / mib)
+        estimatedLimitMB = Int(madeira_memory_governor_current_limit() / mib)
     }
 
-    /// Headroom-based, because the absolute number means nothing without the
-    /// ceiling: green >768MB free, yellow >384MB, orange >128MB, red below.
+    /// Color by dynamic iOS headroom. The absolute footprint alone is not a
+    /// reliable warning signal because the per-process envelope can change.
     private var memColor: Color {
-        let free = Self.jetsamLimitMB - memMB
-        if memMB == 0 { return .secondary }
-        if free > 768 { return .green }
-        if free > 384 { return .yellow }
-        if free > 128 { return .orange }
+        guard memMB > 0, estimatedLimitMB > 0 else { return .secondary }
+        if availableMB > 512 { return .green }
+        if availableMB > 256 { return .yellow }
+        if availableMB > 128 { return .orange }
         return .red
     }
 
@@ -102,13 +93,12 @@ struct FPSOverlay: View {
                 .cornerRadius(6)
             } else if visible {
                 HStack(spacing: 8) {
-                    // ml606: live phys_footprint — the SAME number jetsam kills on.
-                    // ml605 died at 4080MB against a 4096MB limit with no warning
-                    // of any kind in the log, so having it on screen turns "it
-                    // vanished" into "we watched it climb".
-                    Text("\(memMB)MB")
+                    // Dynamic memory telemetry: footprint plus current iOS headroom.
+                    Text(estimatedLimitMB > 0
+                         ? "\(memMB)/\(estimatedLimitMB)MB"
+                         : "\(memMB)MB")
                         .foregroundColor(memColor)
-                        .frame(width: 56, alignment: .trailing)
+                        .frame(width: 92, alignment: .trailing)
                     Text("|")
                         .foregroundColor(.secondary)
                     Text("Present:")
@@ -204,12 +194,11 @@ struct FPSOverlay: View {
         }
 
         // 250ms display refresh — computes adaptive-window FPS
-        memMB = readFootprintMB()
+        refreshMemoryTelemetry()
         displayTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
             fps = computeAdaptiveFPS()
-            // ml606: piggybacks on the existing tick, so it costs one extra
-            // task_info per 250ms and no additional SwiftUI invalidation.
-            memMB = readFootprintMB()
+            // Reads cached governor values; the sampler owns task_info/os_proc calls.
+            refreshMemoryTelemetry()
         }
     }
 

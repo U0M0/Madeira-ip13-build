@@ -53,46 +53,83 @@ jobs:
 
       - name: Fetch Microsoft VC Runtime
         run: |
+          set -e
+
           brew install cabextract
 
           rm -rf /tmp/vcredist
           rm -rf app/Madeira/x86_64-vcruntime
 
-          mkdir -p /tmp/vcredist/raw
+          mkdir -p /tmp/vcredist/outer
+          mkdir -p /tmp/vcredist/dlls
           mkdir -p app/Madeira/x86_64-vcruntime
 
           echo "=== Download VC++ 14.44.35211 x64 ==="
 
-          curl -L \
-            "https://download.visualstudio.microsoft.com/download/pr/7ebf5fdb-36dc-4145-b0a0-90d3d5990a61/CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B/VC_redist.x64.exe" \
+          curl --fail --location \
+            "https://download.visualstudio.microsoft.com/download/pr/73aabf2e-9532-4f68-99f7-3247081a619c/CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B/VC_redist.x64.exe" \
             -o /tmp/VC_redist.x64.exe
 
-          echo "=== Extract a10 ==="
-
-          cd /tmp/vcredist
+          echo "=== Extract outer installer ==="
 
           cabextract \
-            -F a10 \
+            -d /tmp/vcredist/outer \
             /tmp/VC_redist.x64.exe
 
-          if [ ! -f a10 ]; then
-            echo "ERROR: a10 was not extracted"
-            ls -lah
+          echo "=== Outer payloads ==="
+
+          ls -lah /tmp/vcredist/outer
+
+          echo "=== Find x64 runtime CAB ==="
+
+          runtime_cab=""
+
+          for payload in /tmp/vcredist/outer/*
+          do
+            [ -f "$payload" ] || continue
+
+            echo "Checking: $payload"
+
+            if cabextract -l "$payload" 2>/dev/null \
+              | grep -qi "vcruntime140.dll_amd64"
+            then
+              runtime_cab="$payload"
+              echo "FOUND runtime CAB: $runtime_cab"
+              break
+            fi
+          done
+
+          if [ -z "$runtime_cab" ]; then
+            echo "ERROR: Could not find x64 VC runtime CAB"
+            echo
+            echo "=== Diagnostic payload listing ==="
+
+            for payload in /tmp/vcredist/outer/*
+            do
+              [ -f "$payload" ] || continue
+              echo
+              echo "----- $payload -----"
+              file "$payload" || true
+              cabextract -l "$payload" 2>&1 || true
+            done
+
             exit 1
           fi
 
-          echo "=== Extract runtime DLLs ==="
+          echo "=== Extract runtime CAB ==="
 
           cabextract \
-            a10 \
-            -d raw
+            -d /tmp/vcredist/dlls \
+            "$runtime_cab"
 
-          echo "=== Files inside runtime ==="
-          find raw -maxdepth 1 -type f -print
+          echo "=== Extracted runtime files ==="
 
-          cd "$GITHUB_WORKSPACE"
+          find /tmp/vcredist/dlls \
+            -maxdepth 1 \
+            -type f \
+            -print
 
-          echo "=== Copy x64 DLLs ==="
+          echo "=== Copy required DLLs ==="
 
           for dll in \
             concrt140.dll \
@@ -108,14 +145,10 @@ jobs:
             vcruntime140_1.dll \
             vcruntime140_threads.dll
           do
-            src="/tmp/vcredist/raw/${dll}_amd64"
+            src="/tmp/vcredist/dlls/${dll}_amd64"
 
             if [ ! -f "$src" ]; then
-              src="/tmp/vcredist/raw/$dll"
-            fi
-
-            if [ ! -f "$src" ]; then
-              echo "ERROR: missing $dll"
+              echo "ERROR: Missing $src"
               exit 1
             fi
 

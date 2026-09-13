@@ -1,4 +1,4 @@
-name: Build Madeira iPhone 13
+name: Build Madeira iPhone 13 IPA
 
 on:
   workflow_dispatch:
@@ -17,19 +17,80 @@ jobs:
         run: |
           sw_vers
           xcodebuild -version
-          xcodebuild -showsdks
-          echo "=== Repository ==="
-          ls -la
-          echo "=== App ==="
-          ls -la app
-          echo "=== FEX ==="
-          ls -la FEX | head
-          echo "=== Wine ==="
-          ls -la wine | head
+          echo "FEX:"
+          git -C FEX rev-parse --short HEAD || true
+          echo "Wine:"
+          git -C wine rev-parse --short HEAD || true
+          echo "DXMT:"
+          git -C research/dxmt rev-parse --short HEAD || true
 
-      - name: Check Xcode project
+      - name: Check required libraries
         run: |
+          echo "=== Required libraries ==="
+
+          for f in \
+            FEX/build-ios/FEXCore/Source/libFEXCore.a \
+            FEX/build-ios/FEXCore/Source/libFEXCore_Base.a \
+            FEX/build-ios/External/fmt/libfmt.a \
+            FEX/build-ios/External/cephes/libcephes_128bit.a \
+            FEX/build-ios/External/xxhash/cmake_unofficial/libxxhash.a \
+            FEX/build-ios/External/SoftFloat-3e/libsoftfloat_3e.a \
+            FEX/build-ios/FEXCore/Source/libJemallocLibs.a \
+            app/Madeira/libwineserver.a \
+            app/Madeira/libntdll_unix.a \
+            app/Madeira/libdxmt_combined.a \
+            app/Madeira/libwin32u_unix.a
+          do
+            if [ -f "$f" ]; then
+              echo "OK      $f"
+            else
+              echo "MISSING $f"
+            fi
+          done
+
+      - name: Build unsigned Madeira
+        run: |
+          set -o pipefail
+
+          mkdir -p "$GITHUB_WORKSPACE/build/Release-iphoneos"
+
           xcodebuild \
             -project app/Madeira.xcodeproj \
             -target Madeira \
-            -showBuildSettings
+            -configuration Release \
+            -sdk iphoneos \
+            CONFIGURATION_BUILD_DIR="$GITHUB_WORKSPACE/build/Release-iphoneos" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+      - name: Package unsigned IPA
+        if: success()
+        run: |
+          cd "$GITHUB_WORKSPACE"
+
+          if [ ! -d "build/Release-iphoneos/Madeira.app" ]; then
+            echo "Madeira.app was not found"
+            find build -maxdepth 4 -type d -name "*.app" -print
+            exit 1
+          fi
+
+          rm -rf Payload
+          mkdir Payload
+          cp -R build/Release-iphoneos/Madeira.app Payload/
+
+          zip -qry Madeira-iPhone13-unsigned.ipa Payload
+
+          echo "=== IPA ==="
+          ls -lh Madeira-iPhone13-unsigned.ipa
+
+      - name: Upload build files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Madeira-iPhone13-build
+          path: |
+            Madeira-iPhone13-unsigned.ipa
+            build.log
+          if-no-files-found: warn

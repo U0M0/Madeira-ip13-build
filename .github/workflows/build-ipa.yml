@@ -53,38 +53,44 @@ jobs:
 
       - name: Fetch Microsoft VC Runtime
         run: |
-          brew install sevenzip
+          brew install cabextract
 
-          curl -L https://aka.ms/vc14/vc_redist.x64.exe \
+          curl -L \
+            https://aka.ms/vc14/vc_redist.x64.exe \
             -o /tmp/VC_redist.x64.exe
 
           rm -rf /tmp/vcredist
           rm -rf app/Madeira/x86_64-vcruntime
 
-          mkdir -p /tmp/vcredist
+          mkdir -p /tmp/vcredist/raw
           mkdir -p app/Madeira/x86_64-vcruntime
 
-          7zz x -tPE \
+          echo "=== Extract outer VC Redist ==="
+
+          cd /tmp/vcredist
+
+          cabextract \
             /tmp/VC_redist.x64.exe \
-            -o/tmp/vcredist \
-            -y
+            -F a10
 
-          echo "=== CAB files ==="
-          find /tmp/vcredist -type f -print
+          if [ ! -f a10 ]; then
+            echo "ERROR: a10 payload not found"
+            ls -la
+            exit 1
+          fi
 
-          while IFS= read -r cab
-          do
-            echo "Extracting: $cab"
-            7zz x "$cab" \
-              -oapp/Madeira/x86_64-vcruntime \
-              -y || true
-          done < <(
-            find /tmp/vcredist \
-              -type f \
-              \( -iname "*.cab" -o -path "*/CABINET/*" \)
-          )
+          echo "=== Extract x64 runtime payload ==="
 
-          echo "=== Verify DLLs ==="
+          cabextract \
+            a10 \
+            -d raw
+
+          echo "=== Extracted files ==="
+          find raw -type f -maxdepth 1 -print
+
+          cd "$GITHUB_WORKSPACE"
+
+          echo "=== Copy required AMD64 DLLs ==="
 
           for dll in \
             concrt140.dll \
@@ -100,22 +106,27 @@ jobs:
             vcruntime140_1.dll \
             vcruntime140_threads.dll
           do
-            found="$(find app/Madeira/x86_64-vcruntime \
-              -type f -iname "$dll" | head -1)"
 
-            if [ -z "$found" ]; then
+            src="/tmp/vcredist/raw/${dll}_amd64"
+
+            if [ ! -f "$src" ]; then
+              src="/tmp/vcredist/raw/$dll"
+            fi
+
+            if [ ! -f "$src" ]; then
               echo "MISSING: $dll"
+              echo "Available files:"
+              find /tmp/vcredist/raw -maxdepth 1 -type f -print
               exit 1
             fi
 
-            if [ "$found" != "app/Madeira/x86_64-vcruntime/$dll" ]; then
-              cp "$found" "app/Madeira/x86_64-vcruntime/$dll"
-            fi
+            cp "$src" "app/Madeira/x86_64-vcruntime/$dll"
 
             echo "OK: $dll"
           done
 
           echo "=== VC Runtime ready ==="
+
           ls -lh app/Madeira/x86_64-vcruntime
           
       - name: Build unsigned Madeira

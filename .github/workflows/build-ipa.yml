@@ -48,6 +48,55 @@ jobs:
             fi
           done
 
+                - name: Fetch Microsoft VC Runtime
+        run: |
+          brew install sevenzip
+
+          curl -L \
+            https://aka.ms/vc14/vc_redist.x64.exe \
+            -o /tmp/VC_redist.x64.exe
+
+          rm -rf /tmp/vcredist
+          mkdir -p /tmp/vcredist
+          mkdir -p app/Madeira/x86_64-vcruntime
+
+          7zz x /tmp/VC_redist.x64.exe -o/tmp/vcredist -y
+
+          echo "=== CAB files ==="
+          find /tmp/vcredist -type f | head -100
+
+          for cab in /tmp/vcredist/.rsrc/1033/CABINET/*.cab; do
+            [ -f "$cab" ] || continue
+            7zz x "$cab" -o/tmp/vcruntime-dlls -y
+          done
+
+          for dll in \
+            concrt140.dll \
+            msvcp140.dll \
+            msvcp140_1.dll \
+            msvcp140_2.dll \
+            msvcp140_atomic_wait.dll \
+            msvcp140_codecvt_ids.dll \
+            vcamp140.dll \
+            vccorlib140.dll \
+            vcomp140.dll \
+            vcruntime140.dll \
+            vcruntime140_1.dll \
+            vcruntime140_threads.dll
+          do
+            found="$(find /tmp/vcruntime-dlls -type f -iname "$dll" | head -1)"
+
+            if [ -z "$found" ]; then
+              echo "MISSING: $dll"
+              exit 1
+            fi
+
+            cp "$found" "app/Madeira/x86_64-vcruntime/$dll"
+          done
+
+          echo "=== VC Runtime ready ==="
+          ls -lh app/Madeira/x86_64-vcruntime/
+
       - name: Build unsigned Madeira
         run: |
           set -o pipefail

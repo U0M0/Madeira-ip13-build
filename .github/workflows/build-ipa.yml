@@ -267,6 +267,26 @@ jobs:
           done
 
           echo "=== FEX iOS build complete ==="
+          
+      - name: Inspect Wine build scripts
+        run: |
+          set -euxo pipefail
+
+          echo "=== All build scripts ==="
+          find build -maxdepth 2 -name build.sh -print
+
+          echo "=== Search for libwineserver.a creators ==="
+          grep -RIn \
+            "libwineserver.a" \
+            build \
+            scripts \
+            tools \
+            . \
+            --exclude-dir=.git \
+            --exclude-dir=FEX \
+            --exclude-dir=research \
+            | head -100
+            
       - name: Build Wine native libraries
         run: |
           set -euxo pipefail

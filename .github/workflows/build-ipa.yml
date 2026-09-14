@@ -267,8 +267,7 @@ jobs:
           done
 
           echo "=== FEX iOS build complete ==="
-          
-          - name: Build Wine native libraries
+      - name: Build Wine native libraries
         run: |
           set -euxo pipefail
 
@@ -298,10 +297,12 @@ jobs:
               echo "MISSING: $f"
               exit 1
             fi
+
             echo "OK: $f"
             ls -lh "$f"
           done
           
+     
       - name: Build unsigned Madeira
         run: |
           set -o pipefail

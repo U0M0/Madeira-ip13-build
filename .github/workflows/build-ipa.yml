@@ -287,6 +287,57 @@ jobs:
             --exclude-dir=research \
             | head -100
             
+        - name: Build base wineserver archive
+        run: |
+          set -euxo pipefail
+
+          brew install bison flex llvm
+
+          mkdir -p wine/build-macos
+          cd wine/build-macos
+
+          ../configure \
+            --enable-win64 \
+            --without-x \
+            --without-wayland \
+            --without-opengl \
+            --without-vulkan \
+            --without-pulse \
+            --without-alsa \
+            --without-cups \
+            --without-dbus \
+            --without-fontconfig \
+            --without-freetype \
+            --without-gnutls \
+            --without-gstreamer \
+            --without-pcap \
+            --without-sane \
+            --without-oss \
+            --without-opencl \
+            --without-unwind
+
+          make -j3 server
+
+          echo "=== Find wineserver objects ==="
+          find server -type f -name "*.o" -print | head -100
+
+          mkdir -p "$GITHUB_WORKSPACE/build/wineserver/obj"
+
+          objects="$(find server -type f -name '*.o')"
+
+          if [ -z "$objects" ]; then
+            echo "ERROR: No wineserver object files were built"
+            exit 1
+          fi
+
+          ar rcs \
+            "$GITHUB_WORKSPACE/build/wineserver/obj/libwineserver.a" \
+            $objects
+
+          echo "=== Base libwineserver.a ==="
+          ls -lh \
+            "$GITHUB_WORKSPACE/build/wineserver/obj/libwineserver.a"
+            
       - name: Build Wine native libraries
         run: |
           set -euxo pipefail

@@ -291,15 +291,44 @@ jobs:
         run: |
           set -euxo pipefail
 
-          brew install bison flex llvm
-          
-                    echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
-          echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+          brew install bison flex llvm lld
 
-          export PATH="$(brew --prefix bison)/bin:$(brew --prefix flex)/bin:$PATH"
+          export PATH="$(brew --prefix bison)/bin:$(brew --prefix flex)/bin:$(brew --prefix llvm)/bin:$(brew --prefix lld)/bin:$PATH"
+
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
+
+          echo "=== Toolchain ==="
+          which clang
+          clang --version
+
+          which llvm-dlltool
+          llvm-dlltool --version
+
+          which lld || true
+          which ld.lld || true
 
           bison --version
           flex --version
+
+          echo "=== Test Windows ARM64 PE compiler ==="
+
+          cat >/tmp/test.c <<'EOF'
+          int main(void) { return 0; }
+          EOF
+
+          clang \
+            -target aarch64-windows \
+            -fuse-ld=lld \
+            -nostdlib \
+            -Wl,-entry:main \
+            -Wl,-subsystem:console \
+            /tmp/test.c \
+            -o /tmp/test.exe
+
+          file /tmp/test.exe
 
           mkdir -p wine/build-macos
           cd wine/build-macos

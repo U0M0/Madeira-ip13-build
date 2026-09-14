@@ -162,6 +162,42 @@ jobs:
 
           ls -lh app/Madeira/x86_64-vcruntime
           
+      - name: Patch FEX iOS diagnostics
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path("FEX/FEXCore/Source/Utils/ArchHelpers/Arm64.cpp")
+          text = path.read_text()
+
+          old = '''  MEMORY_BASIC_INFORMATION mbi {};
+            const char* type = "?";
+            if (VirtualQuery(reinterpret_cast<LPCVOID>(GPRs[AddressReg]), &mbi, sizeof(mbi))) {
+              type = mbi.Type == MEM_IMAGE ? "MEM_IMAGE" : mbi.Type == MEM_MAPPED ? "MEM_MAPPED" : "MEM_PRIVATE";
+            }
+            LogMan::Msg::EFmt("[caspal128] MISALIGNED-UNSUPPORTED Size={} addrReg=x{} addr={:#x} misalign={} "
+                              "crosses16B={} | region base={} size={:#x} prot={:#x} type={} state={:#x}",
+                              Size, AddressReg, GPRs[AddressReg], GPRs[AddressReg] & 15,
+                              (GPRs[AddressReg] & 15) ? "yes" : "no", mbi.BaseAddress, mbi.RegionSize,
+                              mbi.Protect, type, mbi.State);
+          '''
+
+          new = '''  LogMan::Msg::EFmt(
+              "[caspal128] MISALIGNED-UNSUPPORTED Size={} addrReg=x{} addr={:#x} misalign={} crosses16B={}",
+              Size,
+              AddressReg,
+              GPRs[AddressReg],
+              GPRs[AddressReg] & 15,
+              (GPRs[AddressReg] & 15) ? "yes" : "no");
+          '''
+
+          if old not in text:
+              raise SystemExit("ERROR: Expected Arm64.cpp diagnostic block was not found")
+
+          path.write_text(text.replace(old, new, 1))
+          print("Patched Arm64.cpp successfully")
+          PY
+          
       - name: Build FEX for iOS
         run: |
           set -euxo pipefail

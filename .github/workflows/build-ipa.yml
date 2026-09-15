@@ -393,14 +393,10 @@ jobs:
           chmod +x build/wineserver/build.sh
           ./build/wineserver/build.sh
 
-          echo "=== Build ntdll unix ==="
-          chmod +x build/ntdll-unix/build.sh
-          ./build/ntdll-unix/build.sh
-
           echo "=== Build win32u unix ==="
           chmod +x build/win32u-unix/build.sh
           
-                    echo "=== Build ntdll unix ==="
+          echo "=== Build ntdll unix ==="
           chmod +x build/ntdll-unix/build.sh
 
           set +e

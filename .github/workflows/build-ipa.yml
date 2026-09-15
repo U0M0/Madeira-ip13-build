@@ -305,7 +305,6 @@ jobs:
           clang --version
 
           which llvm-dlltool
-          llvm-dlltool --version
 
           which lld || true
           which ld.lld || true

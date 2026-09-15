@@ -362,20 +362,19 @@ jobs:
 
           mkdir -p "$GITHUB_WORKSPACE/build/wineserver/obj"
 
-          mapfile -t objects < <(
-            find server -maxdepth 1 -type f -name "*.o" -print
-          )
+          objects="$(find server -maxdepth 1 -type f -name '*.o' -print)"
 
-          if [ "${#objects[@]}" -eq 0 ]; then
-            echo "ERROR: No wineserver object files were built"
-            exit 1
+          if [ -z "$objects" ]; then
+          echo "ERROR: No wineserver object files were built"
+          exit 1
           fi
 
-          echo "Found ${#objects[@]} wineserver objects"
+          echo "=== Found wineserver objects ==="
+          echo "$objects"
 
           ar rcs \
-            "$GITHUB_WORKSPACE/build/wineserver/obj/libwineserver.a" \
-            "${objects[@]}"
+       "$GITHUB_WORKSPACE/build/wineserver/obj/libwineserver.a" \
+         $objects
 
           echo "=== Base libwineserver.a ==="
           ls -lh "$GITHUB_WORKSPACE/build/wineserver/obj/libwineserver.a"

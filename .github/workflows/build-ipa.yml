@@ -352,27 +352,36 @@ jobs:
             --without-opencl \
             --without-unwind
 
-          make -j3 server
+          make -j3 server/wineserver
+
+                    echo "=== Build wineserver objects ==="
+          make -j3 server/wineserver
 
           echo "=== Find wineserver objects ==="
-          find server -type f -name "*.o" -print | head -100
+          find server -maxdepth 1 -type f -name "*.o" -print
 
           mkdir -p "$GITHUB_WORKSPACE/build/wineserver/obj"
 
-          objects="$(find server -type f -name '*.o')"
+          mapfile -t objects < <(
+            find server -maxdepth 1 -type f -name "*.o" -print
+          )
 
-          if [ -z "$objects" ]; then
+          if [ "${#objects[@]}" -eq 0 ]; then
             echo "ERROR: No wineserver object files were built"
             exit 1
           fi
 
+          echo "Found ${#objects[@]} wineserver objects"
+
           ar rcs \
             "$GITHUB_WORKSPACE/build/wineserver/obj/libwineserver.a" \
-            $objects
+            "${objects[@]}"
 
           echo "=== Base libwineserver.a ==="
-          ls -lh \
-            "$GITHUB_WORKSPACE/build/wineserver/obj/libwineserver.a"
+          ls -lh "$GITHUB_WORKSPACE/build/wineserver/obj/libwineserver.a"
+
+          echo "=== Archive contents ==="
+          ar t "$GITHUB_WORKSPACE/build/wineserver/obj/libwineserver.a" | head -100
             
       - name: Build Wine native libraries
         run: |
